@@ -1,0 +1,64 @@
+---
+
+- name: Install Jenkins
+  hosts: all
+  become: yes
+  remote_user: ubuntu
+  become_user: root
+  vars:
+    jenkins_apt_key_url: "https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key"
+    jenkins_apt_repo: "deb https://pkg.jenkins.io/debian-stable binary/"
+    java: "openjdk-11-jdk"
+
+  tasks:
+  - name: Add Jenkins apt key
+    apt_key:
+      url: "{{ jenkins_apt_key_url }}"
+
+  - name: Add Jenkins apt repository
+    apt_repository:
+      repo: "{{ jenkins_apt_repo }}"
+      state: present
+
+  - name: Add Jenkins public key
+    apt_key:
+      id: 9B7D32F2D50582E6
+      keyserver: keyserver.ubuntu.com
+
+  - name: Update apt cache
+    apt:
+      update_cache: yes
+      state: present
+
+  - name: Install Java
+    apt:
+      name: "{{ java }}"
+      state: present
+
+  - name: Install Jenkins
+    apt:
+      name: jenkins
+      state: latest
+
+  # - name: Install and enable ufw
+  #   apt:
+  #     name: ufw
+  #     state: present
+  # - name: Enable ufw
+  #   ufw:
+  #     state: enabled
+
+  # - name: Sleep 30 seconds
+  #   shell: sleep 30 # Add a sleep command to give Jenkins enough time to start up
+  #   changed_when: false
+
+  - name: Start jenkins
+    systemd:
+      name: jenkins
+      enabled: yes
+      state: started
+
+  # - name: Ensure port 8080 added to ufw #This is the jenkins Default port
+  #   ufw:
+  #     rule: allow
+  #     port: 8080/tcp
