@@ -4,7 +4,9 @@
 # .tfstate files
 *.tfstate
 *.tfstate.*
-
+pubkey
+.terraform.lock.hcl
+terraform.tfvars
 # Crash log files
 crash.log
 
@@ -27,3 +29,5 @@ override.tf.json
 
 # Include tfplan files to ignore the plan output of command: terraform plan -out=tfplan
 # example: *tfplan*
+awsec2server
+install-ansible.sh
