@@ -50,7 +50,7 @@ resource "aws_security_group" "jenkins" {
 resource "local_file" "vm_ip" {
   depends_on = [module.ec2_jenkins]
   content    = values(module.ec2_jenkins.public_ip)[0]
-  filename   = "inventory"
+  filename   = "ansible/inventory/the.hosts"
 }
 
 
@@ -64,7 +64,7 @@ resource "null_resource" "jenkins" {
     host        = values(module.ec2_jenkins.public_ip)[0]
   }
 
-  provisioner "local-exec" {
-    command = "sudo ansible-playbook jenkins.yml"
+  provisioner "remote-exec" {
+    command = "sudo ansible-playbook ansible/playbooks/playbook.yml"
   }
 }
