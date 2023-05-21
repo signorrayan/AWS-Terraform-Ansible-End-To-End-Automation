@@ -1,0 +1,248 @@
+---
+- name: Install base software on all
+  hosts: all
+  gather_facts: yes
+  become: yes
+  tasks:
+    - name: update hosts
+      lineinfile:
+        path: "/etc/hosts"
+        regexp: ".*\t{{ hostvars[item]['ansible_hostname']}}\t{{ hostvars[item]['ansible_hostname']}}"
+        line: "{{ hostvars[item]['ansible_ssh_host'] }}\t{{ hostvars[item]['ansible_hostname']}}\t{{ hostvars[item]['ansible_hostname']}}"
+        state: present
+        backup: yes
+      with_items: "{{ ansible_play_batch }}"       
+    - name: add Adoptium apt key
+      ansible.builtin.apt_key:
+        url: https://packages.adoptium.net/artifactory/api/gpg/key/public
+        state: present
+    - name: add Adoptium repository
+      ansible.builtin.apt_repository:
+        repo: deb https://packages.adoptium.net/artifactory/deb focal main
+        state: present
+    - name: Install common software
+      apt:
+        name:
+          - default-jre
+          - apt-transport-https 
+          - ca-certificates 
+          - curl 
+          - git
+          - gnupg
+          - gnupg-agent 
+          - software-properties-common
+          - unzip
+          - wget
+        state: latest
+      
+- name: Jenkins installation
+  hosts: jenkins_controllers
+  become: yes
+  tasks:
+    # Uncomment the following lines if you don't use the cloud solution (, haven't security groups) and want to use the local installation.
+    # - name: Allow everything and enable UFW
+    #   community.general.ufw:
+    #     state: enabled
+    #     policy: deny
+    # - name: Allow all access to tcp port 8080
+    #   community.general.ufw:
+    #     rule: allow
+    #     port: '8080'
+    #     proto: tcp
+    - name: Add Jenkins apt key
+      ansible.builtin.apt_key:
+        url: https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key
+        state: present
+    - name: Jenkins deb repository
+      ansible.builtin.apt_repository:
+        repo: deb https://pkg.jenkins.io/debian-stable binary/
+        state: present
+    - name: Install Jenkins
+      apt:
+        name:
+          - jenkins=2.387.3
+    - name: Stop Jenkins (autostarts after install)
+      systemd:
+        name: jenkins
+        state: stopped
+    - name: Delete JENKINS_HOME directory
+      file:
+        state: absent
+        path: /var/lib/jenkins
+    - name: Create directories for Jenkins
+      file:
+        path: "{{ item }}"
+        state: directory
+        owner: jenkins
+        group: jenkins
+        recurse: yes
+      with_items:
+        - '/var/cache/jenkins/tmp'
+        - '/var/cache/jenkins/heapdumps'
+        - '/var/lib/jenkins'
+        - '/var/lib/jenkins/plugins'
+        - '/var/lib/jenkins/casc_configs'
+    - name: Create directory for systemd override file
+      file:
+        path: "{{ item }}"
+        state: directory
+        owner: root
+        group: root
+        recurse: yes
+      with_items:
+        - '/etc/systemd/system/jenkins.service.d'
+    - name: Create limits file
+      copy:
+        dest: "/etc/systemd/system/jenkins.service.d/override.conf"
+        src: "files/override.conf"
+    - name: Download jenkins-plugin-manager
+      get_url:
+        url: https://github.com/jenkinsci/plugin-installation-manager-tool/releases/download/2.12.11/jenkins-plugin-manager-2.12.11.jar
+        dest: $HOME/jenkins-plugin-manager.jar
+    - name: Copy the plugins.yaml file
+      copy:
+        dest: "$HOME/plugins.yaml"
+        src: "files/plugins.yaml"
+    - name: Copy the jenkins.yaml file
+      become: yes
+      copy:
+        dest: "/var/lib/jenkins/jenkins.yaml"
+        src: "files/jenkins.yaml"
+    - name: Copy the init files
+      become: yes
+      copy:
+        dest: "/var/lib/jenkins/init.groovy.d/"
+        src: "files/init.groovy.d/"
+    - name: Run the jenkins-plugin-manager
+      become: yes
+      command: java -jar $HOME/jenkins-plugin-manager.jar --jenkins-version 2.387.3 --plugin-file $HOME/plugins.yaml --plugin-download-directory /var/lib/jenkins/plugins
+    - name: Update JENKINS_HOME ownership
+      become: yes
+      file:
+        path: /var/lib/jenkins
+        owner: jenkins
+        group: jenkins
+        state: directory
+        recurse: yes
+    - name: Copy Jenkins configuration files
+      ansible.builtin.template:
+        src: "files/{{ item }}.yaml.j2"
+        dest: "/var/lib/jenkins/casc_configs/{{ item }}.yaml"
+        mode: 0644
+        owner: jenkins
+        group: jenkins
+      loop: "{{ ['seed-job'] | flatten(1) }}"
+    - name: Run daemon-reload to grab the new configuration
+      become: yes
+      systemd:
+        daemon_reload: true
+    - name: Start jenkins service
+      become: yes
+      service:
+        name: jenkins
+        state: started
+
+# --------------------------Agent--------------------------------------
+# - name: Agent installation
+#   hosts: agents
+#   become: yes
+#   tasks:
+#     - name: Allow everything and enable UFW
+#       community.general.ufw:
+#         state: enabled
+#         policy: deny
+#     - name: Allow all access to tcp port 22
+#       community.general.ufw:
+#         rule: allow
+#         port: '22'
+#         proto: tcp
+#     - name: remove any installed docker
+#       apt:
+#         name:
+#           - docker
+#           - docker-engine
+#           - docker.io
+#           - containerd
+#           - runc
+#         state: absent
+#     - name: add docker-ce apt key
+#       ansible.builtin.apt_key:
+#         url: https://download.docker.com/linux/ubuntu/gpg
+#         state: present
+#     - name: docker-ce-stable deb repository
+#       ansible.builtin.apt_repository:
+#         repo: deb [arch=amd64] https://download.docker.com/linux/ubuntu focal stable
+#         state: present
+#     - name: Install Docker
+#       apt:
+#         name:
+#           - docker-ce
+#           - docker-ce-cli
+#           - containerd.io
+#         state: latest
+#     - name: add docker group
+#       group:
+#         name: docker
+#         state: present
+#     - name: add $USER to docker group
+#       user:
+#         name: "{{ ansible_user }}"
+#         groups: docker
+#         append: yes
+#     - name: do a ssh reset in order to reflect the $USER group changes
+#       meta: reset_connection
+#     - name: start Docker service
+#       systemd:
+#         name: docker
+#         state: restarted
+#     - name: create Maven directory
+#       file:
+#         path: "/opt/tools/maven"
+#         state: directory
+#         owner: vagrant
+#         group: vagrant
+#         recurse: yes
+#     - name: download Maven 3.8.5
+#       unarchive:
+#         src: https://mirrors.sonic.net/apache/maven/maven-3/3.8.5/binaries/apache-maven-3.8.5-bin.tar.gz
+#         dest: /opt/tools/maven
+#         remote_src: yes
+#     - name: create Maven latest symlink
+#       file:
+#         src: /opt/tools/maven/apache-maven-3.8.5
+#         dest: /opt/tools/maven/latest
+#         owner: vagrant
+#         group: vagrant
+#         state: link
+#     - name: create Gradle directory
+#       file:
+#         path: "/opt/tools/gradle"
+#         state: directory
+#         owner: vagrant
+#         group: vagrant
+#         recurse: yes
+#     - name: download Gradle 7.2
+#       unarchive:
+#         src: https://services.gradle.org/distributions/gradle-7.2-bin.zip
+#         dest: /opt/tools/gradle
+#         remote_src: yes
+#     - name: create Gradle latest symlink
+#       file:
+#         src: /opt/tools/gradle/gradle-7.2
+#         dest: /opt/tools/gradle/latest
+#         owner: vagrant
+#         group: vagrant
+#         state: link
+#     - name: Update PATH with Maven and Gradle
+#       lineinfile:
+#         path: "/etc/environment"
+#         regexp: ".*PATH=.*"
+#         line: 'PATH="/opt/tools/gradle/latest/bin:/opt/tools/maven/latest/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin"'
+#         state: present
+#     - name: set final ownership to /opt/tools
+#       file:
+#         path: "/opt/tools"
+#         state: directory
+#         owner: vagrant
+#         group: vagrant
+#         recurse: yes

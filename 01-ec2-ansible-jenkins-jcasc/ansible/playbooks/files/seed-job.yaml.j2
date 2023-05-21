@@ -1,0 +1,32 @@
+jobs:
+  - script: >
+      job('job_dsl_example') {
+          description('This is an example of a job')
+
+          parameters {
+              stringParam('Planet', defaultValue = 'world', description = 'This is the world')
+              booleanParam('FLAG_NAME', true)
+              choiceParam('OPTION_NAME', ['option 1 (default)', 'option 2', 'option 3'])
+          }
+
+          scm {
+              git('https://github.com/signorrayan/helloworld-go', 'master')
+          }
+
+          triggers {
+              cron('H 5 * * 7')
+          }
+
+          steps {
+              shell(
+              """
+              echo 'Hellow'
+              echo 'Running script'
+              """
+              )
+          }
+
+          publishers {
+              mailer('recipient@example.com', true, true) // https://jenkinsci.github.io/job-dsl-plugin/#method/javaposse.jobdsl.dsl.helpers.publisher.PublisherContext.mailer
+          }
+      }
