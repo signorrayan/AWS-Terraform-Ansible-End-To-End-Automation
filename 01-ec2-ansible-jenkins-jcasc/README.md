@@ -1,5 +1,5 @@
 # Terraform and Ansible End-To-End Automation
-As a result of the current repository configuration, the Jenkins infrastructure will be created using Terraform, Anisble, JCasC and Job-DSL with the codes and without touching the UI on an AWS EC22 instance.
+As a result of the current repository configuration, the Jenkins infrastructure will be created using Terraform, Anisble, JCasC and Job-DSL with the codes and without touching the UI on an AWS EC2 instance.
 
 ### How to start?
 ```
